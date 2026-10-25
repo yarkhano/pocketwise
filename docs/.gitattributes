@@ -1,0 +1,4 @@
+frontend/windows/* linguist-generated
+frontend/linux/* linguist-generated
+frontend/macos/* linguist-generated
+frontend/ios/* linguist-generated
