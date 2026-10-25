@@ -1,0 +1,3 @@
+# TODO: Add tested and pinned Python dependencies.
+# Planned libraries include FastAPI, SQLAlchemy, Alembic,
+# Pydantic, a PostgreSQL driver, authentication tools, and pytest.

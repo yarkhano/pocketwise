@@ -1,0 +1,3 @@
+# TODO: Configure FastAPI and PostgreSQL services.
+# This placeholder does not start any services.
+services: {}
