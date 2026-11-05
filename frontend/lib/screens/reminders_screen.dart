@@ -7,10 +7,7 @@ import '../notifications.dart';
 import '../widgets.dart';
 
 class RemindersScreen extends StatefulWidget {
-  const RemindersScreen({
-    super.key,
-    required this.api,
-  });
+  const RemindersScreen({super.key, required this.api});
 
   final Api api;
 
@@ -60,10 +57,7 @@ class _RemindersScreenState extends State<RemindersScreen> {
   Future<void> edit([BillReminder? reminder]) async {
     final saved = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
-        builder: (_) => _ReminderForm(
-          api: widget.api,
-          reminder: reminder,
-        ),
+        builder: (_) => _ReminderForm(api: widget.api, reminder: reminder),
       ),
     );
 
@@ -155,17 +149,16 @@ class _RemindersScreenState extends State<RemindersScreen> {
       appBar: AppBar(title: const Text('Bill reminders')),
       body: current == null
           ? loading
-              ? const Center(child: CircularProgressIndicator())
-              : ErrorMessage(
-                  message: error ?? 'Could not load reminders.',
-                  onRetry: load,
-                )
+                ? const Center(child: CircularProgressIndicator())
+                : ErrorMessage(
+                    message: error ?? 'Could not load reminders.',
+                    onRetry: load,
+                  )
           : PageBody(
               onRefresh: load,
               children: [
                 if (loading || working) const LinearProgressIndicator(),
-                if (error != null)
-                  ErrorMessage(message: error!, onRetry: load),
+                if (error != null) ErrorMessage(message: error!, onRetry: load),
                 Panel(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -196,8 +189,7 @@ class _RemindersScreenState extends State<RemindersScreen> {
                     ],
                   ),
                 ),
-                if (warning != null)
-                  Panel(child: Text(warning!)),
+                if (warning != null) Panel(child: Text(warning!)),
                 if (reminders.isEmpty)
                   const EmptyMessage(
                     title: 'No reminders yet',
@@ -266,9 +258,7 @@ class _RemindersScreenState extends State<RemindersScreen> {
               ],
             ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: current == null || working || loading
-            ? null
-            : () => edit(),
+        onPressed: current == null || working || loading ? null : () => edit(),
         icon: const Icon(Icons.add),
         label: const Text('Add reminder'),
       ),
@@ -277,10 +267,7 @@ class _RemindersScreenState extends State<RemindersScreen> {
 }
 
 class _ReminderForm extends StatefulWidget {
-  const _ReminderForm({
-    required this.api,
-    this.reminder,
-  });
+  const _ReminderForm({required this.api, this.reminder});
 
   final Api api;
   final BillReminder? reminder;
@@ -331,10 +318,7 @@ class _ReminderFormState extends State<_ReminderForm> {
   }
 
   Future<void> chooseTime() async {
-    final selected = await showTimePicker(
-      context: context,
-      initialTime: time,
-    );
+    final selected = await showTimePicker(context: context, initialTime: time);
 
     if (selected != null && mounted) {
       setState(() => time = selected);
@@ -353,9 +337,7 @@ class _ReminderFormState extends State<_ReminderForm> {
       time.minute,
     );
 
-    if (enabled &&
-        repeatType == 'once' &&
-        !scheduled.isAfter(DateTime.now())) {
+    if (enabled && repeatType == 'once' && !scheduled.isAfter(DateTime.now())) {
       showMessage(context, 'Choose a future date and time.');
       return;
     }
@@ -412,10 +394,7 @@ class _ReminderFormState extends State<_ReminderForm> {
                   initialValue: repeatType,
                   decoration: const InputDecoration(labelText: 'Repeat'),
                   items: const [
-                    DropdownMenuItem(
-                      value: 'once',
-                      child: Text('One time'),
-                    ),
+                    DropdownMenuItem(value: 'once', child: Text('One time')),
                     DropdownMenuItem(
                       value: 'monthly',
                       child: Text('Every month'),

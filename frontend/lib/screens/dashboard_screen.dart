@@ -34,23 +34,18 @@ class DashboardScreen extends StatelessWidget {
       children: [
         Text(
           'Hello, ${data.user.fullName}',
-          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
+          style: Theme.of(
+            context,
+          ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 6),
         const Text('Your monthly spending at a glance.'),
         const SizedBox(height: 16),
-        MonthSelector(
-          month: month,
-          onChanged: onMonthChanged,
-        ),
+        MonthSelector(month: month, onChanged: onMonthChanged),
         LayoutBuilder(
           builder: (context, constraints) {
             final width = constraints.maxWidth;
-            final cardWidth = width >= 550
-                ? (width - 24) / 3
-                : width;
+            final cardWidth = width >= 550 ? (width - 24) / 3 : width;
 
             return Wrap(
               spacing: 12,
@@ -114,10 +109,7 @@ class DashboardScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
                 BudgetProgress(
-                  spentPaisa: data.categoryTotal(
-                    budget.categoryId,
-                    month,
-                  ),
+                  spentPaisa: data.categoryTotal(budget.categoryId, month),
                   limitPaisa: budget.limitPaisa,
                 ),
               ],

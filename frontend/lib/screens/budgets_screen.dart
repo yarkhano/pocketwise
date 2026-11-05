@@ -90,10 +90,7 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
       body: PageBody(
         onRefresh: widget.onChanged,
         children: [
-          MonthSelector(
-            month: widget.month,
-            onChanged: widget.onMonthChanged,
-          ),
+          MonthSelector(month: widget.month, onChanged: widget.onMonthChanged),
           const SizedBox(height: 16),
           Panel(
             child: Column(
@@ -152,14 +149,8 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
                           }
                         },
                         itemBuilder: (_) => const [
-                          PopupMenuItem(
-                            value: 'edit',
-                            child: Text('Edit'),
-                          ),
-                          PopupMenuItem(
-                            value: 'delete',
-                            child: Text('Delete'),
-                          ),
+                          PopupMenuItem(value: 'edit', child: Text('Edit')),
+                          PopupMenuItem(value: 'delete', child: Text('Delete')),
                         ],
                       ),
                     ],
@@ -271,15 +262,16 @@ class _BudgetFormState extends State<_BudgetForm> {
 
   @override
   Widget build(BuildContext context) {
-    final categories = widget.data.categories
-        .where(
-          (category) =>
-              category.type == expenseType &&
-              (!category.isArchived ||
-                  category.id == widget.budget?.categoryId),
-        )
-        .toList()
-      ..sort((a, b) => a.name.compareTo(b.name));
+    final categories =
+        widget.data.categories
+            .where(
+              (category) =>
+                  category.type == expenseType &&
+                  (!category.isArchived ||
+                      category.id == widget.budget?.categoryId),
+            )
+            .toList()
+          ..sort((a, b) => a.name.compareTo(b.name));
 
     return PopScope(
       canPop: !busy,
@@ -304,10 +296,7 @@ class _BudgetFormState extends State<_BudgetForm> {
                   onChanged: (value) => setState(() => categoryId = value),
                 ),
                 const SizedBox(height: 16),
-                AmountField(
-                  controller: amount,
-                  label: 'Monthly limit',
-                ),
+                AmountField(controller: amount, label: 'Monthly limit'),
                 const SizedBox(height: 20),
                 FilledButton(
                   onPressed: busy ? null : save,

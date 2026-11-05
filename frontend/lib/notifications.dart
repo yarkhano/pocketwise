@@ -81,8 +81,10 @@ class Notifications {
       );
     }
 
-    final android = _plugin.resolvePlatformSpecificImplementation<
-        AndroidFlutterLocalNotificationsPlugin>();
+    final android = _plugin
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >();
 
     if (android == null) return false;
 
@@ -143,8 +145,7 @@ class Notifications {
         anchor.minute,
       );
 
-      if (occurrence.isAfter(current) &&
-          !occurrence.isBefore(anchor)) {
+      if (occurrence.isAfter(current) && !occurrence.isBefore(anchor)) {
         result.add(occurrence);
       }
     }
@@ -175,11 +176,12 @@ class Notifications {
           return _initializationError;
         }
 
-        final android = _plugin.resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>();
+        final android = _plugin
+            .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin
+            >();
 
-        final allowed =
-            await android?.areNotificationsEnabled() ?? false;
+        final allowed = await android?.areNotificationsEnabled() ?? false;
 
         if (!allowed) {
           await _plugin.cancelAll();

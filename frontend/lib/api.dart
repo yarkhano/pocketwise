@@ -1,445 +1,529 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 
+import 'package:cryptography/cryptography.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:http/http.dart' as http;
 
 import 'models.dart';
 
 class ApiException implements Exception {
-  final String message;
-
   const ApiException(this.message);
+
+  final String message;
 
   @override
   String toString() => message;
 }
 
 class Api {
-  static const baseUrl = String.fromEnvironment(
-    'API_BASE_URL',
-    defaultValue: 'http://10.0.2.2:8000/api/v1',
-  );
+  // This storage belongs only to the frontend presentation version.
+  // The future backend implementation must not treat it as server data.
+  static const _storageKey = 'pocketwise_local_accounts_v1';
+  static const _storage = FlutterSecureStorage();
 
-  static const _sessionKey = 'pocketwise_session';
+  final Future<String?> Function() _readStore;
+  final Future<void> Function(String value) _writeStore;
 
-  final http.Client _client = http.Client();
-  final FlutterSecureStorage _storage = const FlutterSecureStorage();
+  Json? _state;
 
-  String? _accessToken;
-  String? _refreshToken;
-  Future<bool>? _refreshing;
+  // Serialize operations to avoid overlapping saves.
+  Future<void> _queue = Future<void>.value();
 
-  AppData? _demo;
-  int _nextId = 100;
+  Api({
+    Future<String?> Function()? readStore,
+    Future<void> Function(String value)? writeStore,
+  }) : _readStore = readStore ?? (() => _storage.read(key: _storageKey)),
+       _writeStore =
+           writeStore ??
+           ((value) => _storage.write(key: _storageKey, value: value));
 
-  bool get isDemo => _demo != null;
+  void dispose() {}
 
-  String get serverAddress => baseUrl;
+  Json get _root => _state!;
 
-  void dispose() {
-    _client.close();
+  List<Json> get _accounts => (_root['accounts'] as List).cast<Json>();
+
+  Json get _account {
+    final activeId = _root['active_user_id'];
+
+    for (final account in _accounts) {
+      final user = account['user'] as Json;
+
+      if (user['id'] == activeId) return account;
+    }
+
+    throw const ApiException('Please log in to continue.');
   }
 
-  Future<void> _saveSession(dynamic response) async {
-    if (response is! Map) {
-      throw const ApiException('Invalid authentication response.');
-    }
+  Future<T> _run<T>(FutureOr<T> Function() operation, {bool save = false}) {
+    final future = _queue.then((_) async {
+      await _initialize();
 
-    final access = response['access_token'];
-    final refresh = response['refresh_token'];
+      final previous = save ? jsonEncode(_root) : null;
 
-    if (access is! String ||
-        refresh is! String ||
-        access.isEmpty ||
-        refresh.isEmpty) {
-      throw const ApiException('The server did not return valid tokens.');
-    }
+      try {
+        final result = await operation();
 
-    // Save both values together so a rotated token pair stays consistent.
-    await _storage.write(
-      key: _sessionKey,
-      value: jsonEncode({
-        'access_token': access,
-        'refresh_token': refresh,
-      }),
+        if (save) {
+          await _writeStore(jsonEncode(_root));
+        }
+
+        return result;
+      } catch (_) {
+        // Restore the previous in-memory state if validation or saving fails.
+        if (previous != null) {
+          _state = jsonDecode(previous) as Json;
+        }
+
+        rethrow;
+      }
+    });
+
+    _queue = future.then<void>(
+      (_) {},
+      onError: (Object error, StackTrace stack) {},
     );
 
-    _accessToken = access;
-    _refreshToken = refresh;
+    return future;
   }
 
-  Future<void> _clearSession() async {
-    _accessToken = null;
-    _refreshToken = null;
-    await _storage.delete(key: _sessionKey);
-  }
+  Future<void> _initialize() async {
+    if (_state != null) return;
 
-  // Reads the saved session. HomeScreen verifies it by loading account data.
-  Future<bool> restoreSession() async {
-    final saved = await _storage.read(key: _sessionKey);
+    final saved = await _readStore();
 
-    if (saved == null) return false;
+    if (saved != null) {
+      try {
+        final decoded = jsonDecode(saved);
+
+        if (decoded is! Map<String, dynamic> ||
+            decoded['version'] != 1 ||
+            decoded['accounts'] is! List ||
+            decoded['next_user_id'] is! int ||
+            decoded['next_record_id'] is! int) {
+          throw const FormatException();
+        }
+
+        _state = decoded;
+        return;
+      } catch (_) {
+        throw const ApiException(
+          'Saved account data could not be opened. '
+          'Your existing data has not been overwritten.',
+        );
+      }
+    }
+
+    _state = {
+      'version': 1,
+      'active_user_id': null,
+      'next_user_id': 1,
+      'next_record_id': 100,
+      'accounts': <Json>[],
+    };
 
     try {
-      final parsed = jsonDecode(saved) as Map<String, dynamic>;
-      _accessToken = parsed['access_token'] as String?;
-      _refreshToken = parsed['refresh_token'] as String?;
+      // Fictional classroom credentials only.
+      final yar = await _createAccount(
+        'Muhammad Yar Khan',
+        'yar@pocketwise.example',
+        'PocketWise@123',
+      );
 
-      if (_accessToken == null || _refreshToken == null) {
-        await _clearSession();
-        return false;
-      }
+      await _createAccount(
+        'Durdana Bila',
+        'durdana@pocketwise.example',
+        'PocketWise@123',
+      );
 
-      return true;
-    } on FormatException {
-      await _clearSession();
-      return false;
-    } on TypeError {
-      await _clearSession();
-      return false;
+      await _createAccount(
+        'Zain Ul Hadi',
+        'zain@pocketwise.example',
+        'PocketWise@123',
+      );
+
+      // The first account has sample records for presenting reports.
+      // The other accounts start empty to demonstrate account separation.
+      _addPresentationRecords(yar);
+
+      await _writeStore(jsonEncode(_root));
+    } catch (_) {
+      _state = null;
+      rethrow;
     }
   }
 
-  Future<void> login(String email, String password) async {
-    final response = await _request(
-      'POST',
-      '/auth/login',
-      authenticated: false,
-      body: {
-        'email': email.trim().toLowerCase(),
-        'password': password,
-      },
-    );
-
-    await _saveSession(response);
-    _demo = null;
+  static String _normalizeEmail(String value) {
+    return value.trim().toLowerCase();
   }
 
-  Future<void> register(
+  static void _validatePassword(String value) {
+    if (value.length < 8 || value.length > 128) {
+      throw const ApiException(
+        'Password must contain between 8 and 128 characters.',
+      );
+    }
+  }
+
+  static void _validateText(
+    String value,
+    String label,
+    int maximum, {
+    bool optional = false,
+  }) {
+    if (!optional && value.trim().isEmpty) {
+      throw ApiException('Enter $label.');
+    }
+
+    if (value.trim().length > maximum) {
+      throw ApiException('$label must not exceed $maximum characters.');
+    }
+  }
+
+  static void _validateAmount(int value) {
+    if (value <= 0 || value > maximumAmountPaisa) {
+      throw const ApiException('Enter a valid positive amount.');
+    }
+  }
+
+  Future<String> _passwordHash(
+    String password,
+    String salt,
+    int iterations,
+  ) async {
+    final algorithm = Pbkdf2(
+      macAlgorithm: Hmac.sha256(),
+      iterations: iterations,
+      bits: 256,
+    );
+
+    final key = await algorithm.deriveKey(
+      secretKey: SecretKey(utf8.encode(password)),
+      nonce: base64Decode(salt),
+    );
+
+    return base64Encode(await key.extractBytes());
+  }
+
+  Future<Json> _makeCredential(String password) async {
+    const iterations = 600000;
+    final random = Random.secure();
+
+    final salt = base64Encode(
+      List<int>.generate(16, (_) => random.nextInt(256)),
+    );
+
+    return {
+      'salt': salt,
+      'iterations': iterations,
+      'hash': await _passwordHash(password, salt, iterations),
+    };
+  }
+
+  Future<bool> _passwordMatches(Json credential, String password) async {
+    final actual = await _passwordHash(
+      password,
+      credential['salt'] as String,
+      credential['iterations'] as int,
+    );
+
+    final expectedBytes = base64Decode(credential['hash'] as String);
+    final actualBytes = base64Decode(actual);
+
+    if (expectedBytes.length != actualBytes.length) return false;
+
+    var difference = 0;
+
+    for (var index = 0; index < actualBytes.length; index++) {
+      difference |= expectedBytes[index] ^ actualBytes[index];
+    }
+
+    return difference == 0;
+  }
+
+  int _newRecordId() {
+    final id = _root['next_record_id'] as int;
+    _root['next_record_id'] = id + 1;
+    return id;
+  }
+
+  Future<Json> _createAccount(
     String fullName,
     String email,
     String password,
   ) async {
-    await _request(
-      'POST',
-      '/auth/register',
-      authenticated: false,
-      body: {
+    final id = _root['next_user_id'] as int;
+    final credential = await _makeCredential(password);
+
+    _root['next_user_id'] = id + 1;
+
+    final account = <String, dynamic>{
+      'user': {
+        'id': id,
         'full_name': fullName.trim(),
-        'email': email.trim().toLowerCase(),
-        'password': password,
+        'email': _normalizeEmail(email),
+        'reminders_enabled': false,
       },
-    );
+      'credential': credential,
+      'categories': _defaultCategories(),
+      'transactions': <Json>[],
+      'budgets': <Json>[],
+      'reminders': <Json>[],
+      'templates': <Json>[],
+    };
+
+    (_root['accounts'] as List).add(account);
+    return account;
   }
 
-  // Returns a warning if server revocation could not be confirmed.
-  // Local credentials are still removed.
-  Future<String?> logout() async {
-    if (isDemo) {
-      _demo = null;
-      return null;
-    }
+  List<Json> _defaultCategories() {
+    final definitions = [
+      ('Food', expenseType, 'food', 0xFFE76F00),
+      ('Transport', expenseType, 'transport', 0xFF2563EB),
+      ('Shopping', expenseType, 'shopping', 0xFF9333EA),
+      ('Bills', expenseType, 'bills', 0xFF0891B2),
+      ('Education', expenseType, 'education', 0xFF2563EB),
+      ('Health', expenseType, 'health', 0xFFBE3445),
+      ('Allowance', incomeType, 'allowance', 0xFF087F5B),
+      ('Salary', incomeType, 'salary', 0xFF2563EB),
+    ];
 
-    String? warning;
-
-    try {
-      if (_refreshToken != null) {
-        await _request(
-          'POST',
-          '/auth/logout',
-          authenticated: false,
-          body: {'refresh_token': _refreshToken},
-        );
-      }
-    } catch (_) {
-      warning =
-          'Signed out on this device. Server session revocation could not '
-          'be confirmed because the server was unavailable.';
-    } finally {
-      await _clearSession();
-    }
-
-    return warning;
+    return [
+      for (final item in definitions)
+        {
+          'id': _newRecordId(),
+          'name': item.$1,
+          'type': item.$2,
+          'icon_key': item.$3,
+          'color_value': item.$4,
+          'is_archived': false,
+        },
+    ];
   }
 
-  Future<bool> _refreshSession() {
-    final existing = _refreshing;
+  void _addPresentationRecords(Json account) {
+    final categories = (account['categories'] as List).cast<Json>();
 
-    if (existing != null) return existing;
+    int categoryId(String name) {
+      return categories.firstWhere((category) => category['name'] == name)['id']
+          as int;
+    }
 
-    final future = _performRefresh();
-    _refreshing = future;
+    final now = DateTime.now();
+    final month = monthOnly(now);
+    final previousMonth = DateTime(now.year, now.month - 1);
 
-    return future.whenComplete(() {
-      if (identical(_refreshing, future)) {
-        _refreshing = null;
-      }
+    final transactions = [
+      MoneyTransaction(
+        id: _newRecordId(),
+        categoryId: categoryId('Allowance'),
+        amountPaisa: 3000000,
+        date: month,
+        note: 'Monthly allowance',
+      ),
+      MoneyTransaction(
+        id: _newRecordId(),
+        categoryId: categoryId('Food'),
+        amountPaisa: 850000,
+        date: dateOnly(now),
+        note: 'Food spending',
+      ),
+      MoneyTransaction(
+        id: _newRecordId(),
+        categoryId: categoryId('Transport'),
+        amountPaisa: 150000,
+        date: dateOnly(now),
+        note: 'Bus fares',
+      ),
+      MoneyTransaction(
+        id: _newRecordId(),
+        categoryId: categoryId('Shopping'),
+        amountPaisa: 220000,
+        date: dateOnly(now),
+        note: 'Stationery and supplies',
+      ),
+      MoneyTransaction(
+        id: _newRecordId(),
+        categoryId: categoryId('Allowance'),
+        amountPaisa: 2500000,
+        date: previousMonth,
+        note: 'Previous allowance',
+      ),
+      MoneyTransaction(
+        id: _newRecordId(),
+        categoryId: categoryId('Food'),
+        amountPaisa: 750000,
+        date: DateTime(previousMonth.year, previousMonth.month, 5),
+        note: 'Previous food spending',
+      ),
+    ];
+
+    account['transactions'] = [
+      for (final item in transactions) {'id': item.id, ...item.toInput()},
+    ];
+
+    final budgets = [
+      MonthlyBudget(
+        id: _newRecordId(),
+        categoryId: categoryId('Food'),
+        month: month,
+        limitPaisa: 1000000,
+      ),
+      MonthlyBudget(
+        id: _newRecordId(),
+        categoryId: categoryId('Transport'),
+        month: month,
+        limitPaisa: 500000,
+      ),
+    ];
+
+    account['budgets'] = [
+      for (final item in budgets) {'id': item.id, ...item.toInput()},
+    ];
+
+    final templates = [
+      QuickTemplate(
+        id: _newRecordId(),
+        categoryId: categoryId('Food'),
+        name: 'University lunch',
+        amountPaisa: 35000,
+        note: 'Lunch',
+      ),
+      QuickTemplate(
+        id: _newRecordId(),
+        categoryId: categoryId('Transport'),
+        name: 'Bus fare',
+        amountPaisa: 10000,
+        note: 'Travel to university',
+      ),
+    ];
+
+    account['templates'] = [
+      for (final item in templates) {'id': item.id, ...item.toInput()},
+    ];
+  }
+
+  Future<bool> restoreSession() {
+    return _run(() {
+      final activeId = _root['active_user_id'];
+
+      return _accounts.any(
+        (account) => (account['user'] as Json)['id'] == activeId,
+      );
     });
   }
 
-  Future<bool> _performRefresh() async {
-    final token = _refreshToken;
+  Future<void> register(String fullName, String email, String password) {
+    return _run<void>(() async {
+      _validateText(fullName, 'your name', 80);
+      _validatePassword(password);
 
-    if (token == null) return false;
+      final normalized = _normalizeEmail(email);
 
-    try {
-      final response = await _request(
-        'POST',
-        '/auth/refresh',
-        authenticated: false,
-        body: {'refresh_token': token},
-      );
+      if (normalized.length > 254 ||
+          !RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(normalized)) {
+        throw const ApiException('Enter a valid email address.');
+      }
 
-      await _saveSession(response);
-      return true;
-    } catch (_) {
-      return false;
-    }
+      if (_accounts.any(
+        (account) => (account['user'] as Json)['email'] == normalized,
+      )) {
+        throw const ApiException('An account with this email already exists.');
+      }
+
+      await _createAccount(fullName, normalized, password);
+    }, save: true);
   }
 
-  Future<dynamic> _request(
-    String method,
-    String path, {
-    Json? body,
-    Map<String, String>? query,
-    bool authenticated = true,
-    bool retry = true,
-  }) async {
-    final normalizedBase = baseUrl.replaceFirst(RegExp(r'/$'), '');
-    final uri = Uri.parse('$normalizedBase$path').replace(
-      queryParameters: query,
-    );
+  Future<void> login(String email, String password) {
+    return _run<void>(() async {
+      final normalized = _normalizeEmail(email);
+      Json? selected;
 
-    final request = http.Request(method, uri);
-
-    request.headers['Accept'] = 'application/json';
-
-    if (body != null) {
-      request.headers['Content-Type'] = 'application/json';
-      request.body = jsonEncode(body);
-    }
-
-    if (authenticated && _accessToken != null) {
-      request.headers['Authorization'] = 'Bearer $_accessToken';
-    }
-
-    http.Response response;
-
-    try {
-      response = await _client
-          .send(request)
-          .then(http.Response.fromStream)
-          .timeout(const Duration(seconds: 20));
-    } on TimeoutException {
-      throw const ApiException(
-        'The request timed out. Check your connection and try again.',
-      );
-    } on http.ClientException {
-      throw const ApiException(
-        'Cannot reach the server. Use demo mode until FastAPI is running.',
-      );
-    }
-
-    if (response.statusCode == 401 &&
-        authenticated &&
-        retry &&
-        await _refreshSession()) {
-      return _request(
-        method,
-        path,
-        body: body,
-        query: query,
-        authenticated: authenticated,
-        retry: false,
-      );
-    }
-
-    dynamic decoded;
-
-    if (response.body.trim().isNotEmpty) {
-      try {
-        decoded = jsonDecode(response.body);
-      } on FormatException {
-        if (response.statusCode < 400) {
-          throw const ApiException('The server returned an invalid response.');
+      for (final account in _accounts) {
+        if ((account['user'] as Json)['email'] == normalized) {
+          selected = account;
+          break;
         }
       }
-    }
 
-    if (response.statusCode >= 400) {
-      if (response.statusCode == 401) {
-        throw ApiException(
-          authenticated
-              ? 'Your session could not be verified. Please sign out and log in.'
-              : 'The email, password, or session is invalid.',
-        );
+      if (selected == null ||
+          !await _passwordMatches(selected['credential'] as Json, password)) {
+        throw const ApiException('Incorrect email or password.');
       }
 
-      if (response.statusCode >= 500) {
-        throw const ApiException(
-          'The server could not complete the request. Please try again.',
-        );
-      }
-
-      final detail = decoded is Map ? decoded['detail'] : null;
-
-      if (detail is String) throw ApiException(detail);
-
-      if (detail is List) {
-        final messages = detail
-            .whereType<Map>()
-            .map((item) => item['msg']?.toString() ?? 'Invalid input.')
-            .join('\n');
-
-        if (messages.isNotEmpty) throw ApiException(messages);
-      }
-
-      throw ApiException('Request failed (${response.statusCode}).');
-    }
-
-    return decoded;
+      _root['active_user_id'] = (selected['user'] as Json)['id'];
+    }, save: true);
   }
 
-  // Planned list response:
-  // {"items": [...], "total": 25}
-  //
-  // Fetches all pages so frontend summaries never use a partial list.
-  Future<List<Json>> _all(
-    String path, {
-    Map<String, String> query = const {},
-  }) async {
-    const limit = 200;
-    final result = <Json>[];
-
-    while (true) {
-      final response = await _request(
-        'GET',
-        path,
-        query: {
-          ...query,
-          'limit': '$limit',
-          'offset': '${result.length}',
-        },
-      );
-
-      if (response is! Map ||
-          response['items'] is! List ||
-          response['total'] is! int) {
-        throw const ApiException('Invalid list response from the server.');
-      }
-
-      final rows = (response['items'] as List)
-          .map((item) => Map<String, dynamic>.from(item as Map))
-          .toList();
-
-      final total = response['total'] as int;
-
-      result.addAll(rows);
-
-      if (result.length >= total) return result;
-
-      if (rows.isEmpty) {
-        throw const ApiException('The server returned incomplete data.');
-      }
-    }
+  Future<String?> logout() {
+    return _run<String?>(() {
+      _root['active_user_id'] = null;
+      return null;
+    }, save: true);
   }
 
-  Future<AppData> loadData() async {
-    if (_demo != null) return _demo!;
-
-    // Sequential requests keep authentication refresh behavior simple.
-    final profile = await _request('GET', '/users/me');
-    final categories = await _all(
-      '/categories',
-      query: {'include_archived': 'true'},
-    );
-    final transactions = await _all('/transactions');
-    final budgets = await _all('/budgets');
-    final reminders = await _all('/reminders');
-    final templates = await _all('/templates');
+  AppData _data() {
+    final account = _account;
 
     return AppData(
-      user: UserProfile.fromJson(
-        Map<String, dynamic>.from(profile as Map),
-      ),
-      categories: categories.map(ExpenseCategory.fromJson).toList(),
-      transactions: transactions.map(MoneyTransaction.fromJson).toList(),
-      budgets: budgets.map(MonthlyBudget.fromJson).toList(),
-      reminders: reminders.map(BillReminder.fromJson).toList(),
-      templates: templates.map(QuickTemplate.fromJson).toList(),
+      user: UserProfile.fromJson(account['user'] as Json),
+      categories: _rows('categories').map(ExpenseCategory.fromJson).toList(),
+      transactions: _rows(
+        'transactions',
+      ).map(MoneyTransaction.fromJson).toList(),
+      budgets: _rows('budgets').map(MonthlyBudget.fromJson).toList(),
+      reminders: _rows('reminders').map(BillReminder.fromJson).toList(),
+      templates: _rows('templates').map(QuickTemplate.fromJson).toList(),
     );
   }
 
-  Future<void> saveCategory(ExpenseCategory value) async {
-    final name = value.name.trim();
+  Future<AppData> loadData() => _run(_data);
 
-    if (name.isEmpty) {
-      throw const ApiException('Enter a category name.');
-    }
-
-    if (value.type != incomeType && value.type != expenseType) {
-      throw const ApiException('Choose income or expense.');
-    }
-
-    if (!isDemo) {
-      await _request(
-        value.id == 0 ? 'POST' : 'PATCH',
-        value.id == 0 ? '/categories' : '/categories/${value.id}',
-        body: value.toInput(),
-      );
-      return;
-    }
-
-    final data = _demo!;
-
-    if (data.categories.any(
-      (item) =>
-          item.id != value.id &&
-          item.type == value.type &&
-          item.name.toLowerCase() == name.toLowerCase(),
-    )) {
-      throw const ApiException('This category name already exists.');
-    }
-
-    if (value.id != 0) {
-      final old = data.category(value.id);
-      final referenced = data.categoryHasTransactions(value.id) ||
-          data.budgets.any((item) => item.categoryId == value.id) ||
-          data.templates.any((item) => item.categoryId == value.id);
-
-      if (referenced && old.type != value.type) {
-        throw const ApiException(
-          'The type cannot change while this category is used by records.',
-        );
-      }
-    }
-
-    final saved = ExpenseCategory(
-      id: value.id == 0 ? _nextId++ : value.id,
-      name: name,
-      type: value.type,
-      iconKey: value.iconKey,
-      colorValue: value.colorValue,
-      isArchived: value.isArchived,
-    );
-
-    _update(
-      categories: [
-        ...data.categories.where((item) => item.id != saved.id),
-        saved,
-      ],
-    );
+  List<Json> _rows(String collection) {
+    return List<Json>.from(_account[collection] as List);
   }
 
-  ExpenseCategory _validateCategory(
-    int categoryId, {
+  Json? _existing(String collection, int id) {
+    if (id == 0) return null;
+
+    for (final row in _rows(collection)) {
+      if (row['id'] == id) return row;
+    }
+
+    throw const ApiException('The requested record was not found.');
+  }
+
+  void _put(String collection, int id, Json input) {
+    if (id != 0) _existing(collection, id);
+
+    final savedId = id == 0 ? _newRecordId() : id;
+
+    _account[collection] = [
+      ..._rows(collection).where((row) => row['id'] != savedId),
+      {'id': savedId, ...input},
+    ];
+  }
+
+  Future<void> _delete(String collection, int id) {
+    return _run<void>(() {
+      _existing(collection, id);
+
+      _account[collection] = _rows(
+        collection,
+      ).where((row) => row['id'] != id).toList();
+    }, save: true);
+  }
+
+  ExpenseCategory _checkCategory(
+    int id, {
     int? existingCategoryId,
     bool expenseOnly = false,
   }) {
-    final category = _demo!.category(categoryId);
+    final category = _data().category(id);
 
-    if (category.isArchived && categoryId != existingCategoryId) {
+    if (category.isArchived && id != existingCategoryId) {
       throw const ApiException('Choose an active category.');
     }
 
@@ -450,412 +534,156 @@ class Api {
     return category;
   }
 
-  Future<void> saveTransaction(MoneyTransaction value) async {
-    if (value.amountPaisa <= 0 ||
-        value.amountPaisa > maximumAmountPaisa) {
-      throw const ApiException('Enter a valid positive amount.');
-    }
+  Future<void> saveCategory(ExpenseCategory value) {
+    return _run<void>(() {
+      _validateText(value.name, 'a category name', 40);
 
-    if (!isDemo) {
-      await _request(
-        value.id == 0 ? 'POST' : 'PATCH',
-        value.id == 0 ? '/transactions' : '/transactions/${value.id}',
-        body: value.toInput(),
+      if (value.type != incomeType && value.type != expenseType) {
+        throw const ApiException('Choose income or expense.');
+      }
+
+      final data = _data();
+
+      if (data.categories.any(
+        (category) =>
+            category.id != value.id &&
+            category.type == value.type &&
+            category.name.toLowerCase() == value.name.trim().toLowerCase(),
+      )) {
+        throw const ApiException('This category name already exists.');
+      }
+
+      if (value.id != 0) {
+        final old = data.category(value.id);
+
+        final referenced =
+            data.categoryHasTransactions(value.id) ||
+            data.budgets.any((item) => item.categoryId == value.id) ||
+            data.templates.any((item) => item.categoryId == value.id);
+
+        if (referenced && old.type != value.type) {
+          throw const ApiException(
+            'The category type cannot change while records use it.',
+          );
+        }
+      }
+
+      _put('categories', value.id, value.toInput());
+    }, save: true);
+  }
+
+  Future<void> saveTransaction(MoneyTransaction value) {
+    return _run<void>(() {
+      _validateAmount(value.amountPaisa);
+      _validateText(value.note, 'the note', 250, optional: true);
+
+      final old = _existing('transactions', value.id);
+
+      _checkCategory(
+        value.categoryId,
+        existingCategoryId: old?['category_id'] as int?,
       );
-      return;
-    }
 
-    final data = _demo!;
-    final old = data.transactions.where((item) => item.id == value.id);
-
-    _validateCategory(
-      value.categoryId,
-      existingCategoryId: old.isEmpty ? null : old.first.categoryId,
-    );
-
-    final saved = MoneyTransaction(
-      id: value.id == 0 ? _nextId++ : value.id,
-      categoryId: value.categoryId,
-      amountPaisa: value.amountPaisa,
-      date: dateOnly(value.date),
-      note: value.note.trim(),
-    );
-
-    _update(
-      transactions: [
-        ...data.transactions.where((item) => item.id != saved.id),
-        saved,
-      ],
-    );
+      _put('transactions', value.id, value.toInput());
+    }, save: true);
   }
 
-  Future<void> deleteTransaction(int id) async {
-    if (!isDemo) {
-      await _request('DELETE', '/transactions/$id');
-      return;
-    }
+  Future<void> deleteTransaction(int id) => _delete('transactions', id);
 
-    _update(
-      transactions: _demo!.transactions
-          .where((item) => item.id != id)
-          .toList(),
-    );
-  }
+  Future<void> saveBudget(MonthlyBudget value) {
+    return _run<void>(() {
+      _validateAmount(value.limitPaisa);
 
-  Future<void> saveBudget(MonthlyBudget value) async {
-    if (value.limitPaisa <= 0 ||
-        value.limitPaisa > maximumAmountPaisa) {
-      throw const ApiException('Enter a valid budget limit.');
-    }
+      final old = _existing('budgets', value.id);
 
-    if (!isDemo) {
-      await _request(
-        value.id == 0 ? 'POST' : 'PATCH',
-        value.id == 0 ? '/budgets' : '/budgets/${value.id}',
-        body: value.toInput(),
+      _checkCategory(
+        value.categoryId,
+        existingCategoryId: old?['category_id'] as int?,
+        expenseOnly: true,
       );
-      return;
-    }
 
-    final data = _demo!;
-    final old = data.budgets.where((item) => item.id == value.id);
+      if (_data().budgets.any(
+        (budget) =>
+            budget.id != value.id &&
+            budget.categoryId == value.categoryId &&
+            sameMonth(budget.month, value.month),
+      )) {
+        throw const ApiException(
+          'This category already has a budget for that month.',
+        );
+      }
 
-    _validateCategory(
-      value.categoryId,
-      existingCategoryId: old.isEmpty ? null : old.first.categoryId,
-      expenseOnly: true,
-    );
-
-    if (data.budgets.any(
-      (item) =>
-          item.id != value.id &&
-          item.categoryId == value.categoryId &&
-          sameMonth(item.month, value.month),
-    )) {
-      throw const ApiException(
-        'This category already has a budget for that month.',
-      );
-    }
-
-    final saved = MonthlyBudget(
-      id: value.id == 0 ? _nextId++ : value.id,
-      categoryId: value.categoryId,
-      month: monthOnly(value.month),
-      limitPaisa: value.limitPaisa,
-    );
-
-    _update(
-      budgets: [
-        ...data.budgets.where((item) => item.id != saved.id),
-        saved,
-      ],
-    );
+      _put('budgets', value.id, value.toInput());
+    }, save: true);
   }
 
-  Future<void> deleteBudget(int id) async {
-    if (!isDemo) {
-      await _request('DELETE', '/budgets/$id');
-      return;
-    }
+  Future<void> deleteBudget(int id) => _delete('budgets', id);
 
-    _update(
-      budgets: _demo!.budgets.where((item) => item.id != id).toList(),
-    );
+  Future<void> saveReminder(BillReminder value) {
+    return _run<void>(() {
+      _validateText(value.title, 'a reminder title', 120);
+
+      if (value.repeatType != 'once' && value.repeatType != 'monthly') {
+        throw const ApiException('Choose a valid reminder repeat option.');
+      }
+
+      if (value.isEnabled &&
+          !value.isMonthly &&
+          !value.scheduledAt.isAfter(DateTime.now())) {
+        throw const ApiException('Choose a future reminder time.');
+      }
+
+      _put('reminders', value.id, value.toInput());
+    }, save: true);
   }
 
-  Future<void> saveReminder(BillReminder value) async {
-    if (value.title.trim().isEmpty) {
-      throw const ApiException('Enter a reminder title.');
-    }
+  Future<void> deleteReminder(int id) => _delete('reminders', id);
 
-    if (!isDemo) {
-      await _request(
-        value.id == 0 ? 'POST' : 'PATCH',
-        value.id == 0 ? '/reminders' : '/reminders/${value.id}',
-        body: value.toInput(),
-      );
-      return;
-    }
+  Future<void> saveTemplate(QuickTemplate value) {
+    return _run<void>(() {
+      _validateText(value.name, 'a template name', 60);
+      _validateText(value.note, 'the note', 250, optional: true);
+      _validateAmount(value.amountPaisa);
+      _checkCategory(value.categoryId);
 
-    final saved = BillReminder(
-      id: value.id == 0 ? _nextId++ : value.id,
-      title: value.title.trim(),
-      scheduledAt: value.scheduledAt,
-      timezone: value.timezone,
-      repeatType: value.repeatType,
-      isEnabled: value.isEnabled,
-    );
-
-    _update(
-      reminders: [
-        ..._demo!.reminders.where((item) => item.id != saved.id),
-        saved,
-      ],
-    );
+      _put('templates', value.id, value.toInput());
+    }, save: true);
   }
 
-  Future<void> deleteReminder(int id) async {
-    if (!isDemo) {
-      await _request('DELETE', '/reminders/$id');
-      return;
-    }
-
-    _update(
-      reminders: _demo!.reminders.where((item) => item.id != id).toList(),
-    );
-  }
-
-  Future<void> saveTemplate(QuickTemplate value) async {
-    if (value.name.trim().isEmpty) {
-      throw const ApiException('Enter a template name.');
-    }
-
-    if (value.amountPaisa <= 0 ||
-        value.amountPaisa > maximumAmountPaisa) {
-      throw const ApiException('Enter a valid amount.');
-    }
-
-    if (!isDemo) {
-      await _request(
-        value.id == 0 ? 'POST' : 'PATCH',
-        value.id == 0 ? '/templates' : '/templates/${value.id}',
-        body: value.toInput(),
-      );
-      return;
-    }
-
-    _validateCategory(value.categoryId);
-
-    final saved = QuickTemplate(
-      id: value.id == 0 ? _nextId++ : value.id,
-      categoryId: value.categoryId,
-      name: value.name.trim(),
-      amountPaisa: value.amountPaisa,
-      note: value.note.trim(),
-    );
-
-    _update(
-      templates: [
-        ..._demo!.templates.where((item) => item.id != saved.id),
-        saved,
-      ],
-    );
-  }
-
-  Future<void> deleteTemplate(int id) async {
-    if (!isDemo) {
-      await _request('DELETE', '/templates/$id');
-      return;
-    }
-
-    _update(
-      templates: _demo!.templates.where((item) => item.id != id).toList(),
-    );
-  }
+  Future<void> deleteTemplate(int id) => _delete('templates', id);
 
   Future<void> updateProfile({
     required String fullName,
     required bool remindersEnabled,
-  }) async {
-    if (fullName.trim().isEmpty) {
-      throw const ApiException('Enter your name.');
-    }
-
-    if (!isDemo) {
-      await _request(
-        'PATCH',
-        '/users/me',
-        body: {
-          'full_name': fullName.trim(),
-          'reminders_enabled': remindersEnabled,
-        },
-      );
-      return;
-    }
-
-    _update(
-      user: _demo!.user.copyWith(
-        fullName: fullName.trim(),
-        remindersEnabled: remindersEnabled,
-      ),
-    );
-  }
-
-  Future<void> changePassword(
-    String currentPassword,
-    String newPassword,
-  ) async {
-    if (isDemo) {
-      throw const ApiException(
-        'Demo mode has no password. Connect to the backend to change a password.',
-      );
-    }
-
-    await _request(
-      'POST',
-      '/users/me/password',
-      body: {
-        'current_password': currentPassword,
-        'new_password': newPassword,
-      },
-    );
-
-    // Backend contract: changing the password revokes existing sessions.
-    await _clearSession();
-  }
-
-  void _update({
-    UserProfile? user,
-    List<ExpenseCategory>? categories,
-    List<MoneyTransaction>? transactions,
-    List<MonthlyBudget>? budgets,
-    List<BillReminder>? reminders,
-    List<QuickTemplate>? templates,
   }) {
-    final old = _demo!;
+    return _run<void>(() {
+      _validateText(fullName, 'your name', 80);
 
-    _demo = AppData(
-      user: user ?? old.user,
-      categories: categories ?? old.categories,
-      transactions: transactions ?? old.transactions,
-      budgets: budgets ?? old.budgets,
-      reminders: reminders ?? old.reminders,
-      templates: templates ?? old.templates,
-    );
+      final user = _account['user'] as Json;
+      user['full_name'] = fullName.trim();
+      user['reminders_enabled'] = remindersEnabled;
+    }, save: true);
   }
 
-  void enterDemo() {
-    _nextId = 100;
+  Future<void> changePassword(String currentPassword, String newPassword) {
+    return _run<void>(() async {
+      final account = _account;
 
-    final now = DateTime.now();
-    final month = monthOnly(now);
+      if (!await _passwordMatches(
+        account['credential'] as Json,
+        currentPassword,
+      )) {
+        throw const ApiException('Your current password is incorrect.');
+      }
 
-    _demo = AppData(
-      user: const UserProfile(
-        id: 1,
-        fullName: 'Demo Student',
-        email: 'demo@pocketwise.example',
-        remindersEnabled: false,
-      ),
-      categories: const [
-        ExpenseCategory(
-          id: 1,
-          name: 'Food',
-          type: expenseType,
-          iconKey: 'food',
-          colorValue: 0xFFE76F00,
-        ),
-        ExpenseCategory(
-          id: 2,
-          name: 'Transport',
-          type: expenseType,
-          iconKey: 'transport',
-          colorValue: 0xFF2563EB,
-        ),
-        ExpenseCategory(
-          id: 3,
-          name: 'Shopping',
-          type: expenseType,
-          iconKey: 'shopping',
-          colorValue: 0xFF9333EA,
-        ),
-        ExpenseCategory(
-          id: 4,
-          name: 'Bills',
-          type: expenseType,
-          iconKey: 'bills',
-          colorValue: 0xFF0891B2,
-        ),
-        ExpenseCategory(
-          id: 5,
-          name: 'Allowance',
-          type: incomeType,
-          iconKey: 'allowance',
-          colorValue: 0xFF087F5B,
-        ),
-        ExpenseCategory(
-          id: 6,
-          name: 'Salary',
-          type: incomeType,
-          iconKey: 'salary',
-          colorValue: 0xFF2563EB,
-        ),
-      ],
-      transactions: [
-        MoneyTransaction(
-          id: 10,
-          categoryId: 5,
-          amountPaisa: 3000000,
-          date: month,
-          note: 'Monthly allowance',
-        ),
-        MoneyTransaction(
-          id: 11,
-          categoryId: 1,
-          amountPaisa: 850000,
-          date: dateOnly(now),
-          note: 'Food spending',
-        ),
-        MoneyTransaction(
-          id: 12,
-          categoryId: 2,
-          amountPaisa: 150000,
-          date: dateOnly(now),
-          note: 'Bus fares',
-        ),
-        MoneyTransaction(
-          id: 13,
-          categoryId: 3,
-          amountPaisa: 220000,
-          date: dateOnly(now),
-          note: 'Stationery and supplies',
-        ),
-        MoneyTransaction(
-          id: 14,
-          categoryId: 5,
-          amountPaisa: 2500000,
-          date: DateTime(now.year, now.month - 1, 1),
-          note: 'Previous allowance',
-        ),
-        MoneyTransaction(
-          id: 15,
-          categoryId: 1,
-          amountPaisa: 750000,
-          date: DateTime(now.year, now.month - 1, 5),
-          note: 'Previous food spending',
-        ),
-      ],
-      budgets: [
-        MonthlyBudget(
-          id: 20,
-          categoryId: 1,
-          month: month,
-          limitPaisa: 1000000,
-        ),
-        MonthlyBudget(
-          id: 21,
-          categoryId: 2,
-          month: month,
-          limitPaisa: 500000,
-        ),
-      ],
-      reminders: [],
-      templates: const [
-        QuickTemplate(
-          id: 30,
-          categoryId: 1,
-          name: 'Lunch',
-          amountPaisa: 35000,
-          note: 'Lunch',
-        ),
-        QuickTemplate(
-          id: 31,
-          categoryId: 2,
-          name: 'Bus fare',
-          amountPaisa: 10000,
-          note: 'Bus fare',
-        ),
-      ],
-    );
+      _validatePassword(newPassword);
+
+      if (currentPassword == newPassword) {
+        throw const ApiException('Choose a different new password.');
+      }
+
+      account['credential'] = await _makeCredential(newPassword);
+      _root['active_user_id'] = null;
+    }, save: true);
   }
 }

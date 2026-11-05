@@ -51,10 +51,7 @@ ThemeData pocketWiseTheme() {
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
       fillColor: Colors.white,
-      contentPadding: const EdgeInsets.symmetric(
-        horizontal: 16,
-        vertical: 16,
-      ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
         borderSide: const BorderSide(color: Color(0xFFDCE2ED)),
@@ -71,17 +68,13 @@ ThemeData pocketWiseTheme() {
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
         minimumSize: const Size(48, 50),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: OutlinedButton.styleFrom(
         minimumSize: const Size(48, 48),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       ),
     ),
     floatingActionButtonTheme: const FloatingActionButtonThemeData(
@@ -92,9 +85,7 @@ ThemeData pocketWiseTheme() {
       backgroundColor: Colors.white,
       indicatorColor: scheme.primaryContainer,
     ),
-    snackBarTheme: const SnackBarThemeData(
-      behavior: SnackBarBehavior.floating,
-    ),
+    snackBarTheme: const SnackBarThemeData(behavior: SnackBarBehavior.floating),
     dividerTheme: const DividerThemeData(
       color: Color(0xFFE5E9F1),
       thickness: 1,

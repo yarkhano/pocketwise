@@ -23,16 +23,12 @@ int parseMoney(String value) {
   final text = value.trim();
 
   if (!RegExp(r'^\d+(\.\d{1,2})?$').hasMatch(text)) {
-    throw const FormatException(
-      'Enter an amount such as 350 or 350.50.',
-    );
+    throw const FormatException('Enter an amount such as 350 or 350.50.');
   }
 
   final parts = text.split('.');
   final whole = BigInt.parse(parts[0]);
-  final fraction = parts.length == 2
-      ? parts[1].padRight(2, '0')
-      : '00';
+  final fraction = parts.length == 2 ? parts[1].padRight(2, '0') : '00';
 
   final amount = whole * BigInt.from(100) + BigInt.parse(fraction);
 
@@ -163,10 +159,7 @@ class UserProfile {
     );
   }
 
-  UserProfile copyWith({
-    String? fullName,
-    bool? remindersEnabled,
-  }) {
+  UserProfile copyWith({String? fullName, bool? remindersEnabled}) {
     return UserProfile(
       id: id,
       fullName: fullName ?? this.fullName,
@@ -408,11 +401,11 @@ class AppData {
     required List<MonthlyBudget> budgets,
     required List<BillReminder> reminders,
     required List<QuickTemplate> templates,
-  })  : categories = List.unmodifiable(categories),
-        transactions = List.unmodifiable(transactions),
-        budgets = List.unmodifiable(budgets),
-        reminders = List.unmodifiable(reminders),
-        templates = List.unmodifiable(templates);
+  }) : categories = List.unmodifiable(categories),
+       transactions = List.unmodifiable(transactions),
+       budgets = List.unmodifiable(budgets),
+       reminders = List.unmodifiable(reminders),
+       templates = List.unmodifiable(templates);
 
   ExpenseCategory category(int id) {
     return categories.firstWhere(
@@ -424,8 +417,7 @@ class AppData {
   List<ExpenseCategory> activeCategories([String? type]) {
     return categories
         .where(
-          (item) =>
-              !item.isArchived && (type == null || item.type == type),
+          (item) => !item.isArchived && (type == null || item.type == type),
         )
         .toList()
       ..sort(
@@ -459,8 +451,7 @@ class AppData {
     var total = 0;
 
     for (final item in transactions) {
-      if (item.categoryId == categoryId &&
-          sameMonth(item.date, month)) {
+      if (item.categoryId == categoryId && sameMonth(item.date, month)) {
         total += item.amountPaisa;
       }
     }

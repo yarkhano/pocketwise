@@ -5,14 +5,14 @@ import '../theme.dart';
 import '../widgets.dart';
 
 class AuthScreen extends StatefulWidget {
-  final Api api;
-  final VoidCallback onAuthenticated;
-
   const AuthScreen({
     super.key,
     required this.api,
     required this.onAuthenticated,
   });
+
+  final Api api;
+  final VoidCallback onAuthenticated;
 
   @override
   State<AuthScreen> createState() => _AuthScreenState();
@@ -54,26 +54,20 @@ class _AuthScreenState extends State<AuthScreen> {
         if (!mounted) return;
 
         setState(() => registering = false);
-        confirmController.clear();
         passwordController.clear();
+        confirmController.clear();
 
         showMessage(
           context,
           'Account created. Log in using your email and password.',
         );
       } else {
-        await widget.api.login(
-          emailController.text,
-          passwordController.text,
-        );
+        await widget.api.login(emailController.text, passwordController.text);
 
-        if (!mounted) return;
-        widget.onAuthenticated();
+        if (mounted) widget.onAuthenticated();
       }
     } catch (error) {
-      if (mounted) {
-        showMessage(context, readableError(error));
-      }
+      if (mounted) showMessage(context, readableError(error));
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -82,10 +76,11 @@ class _AuthScreenState extends State<AuthScreen> {
   void switchMode() {
     if (busy) return;
 
-    setState(() => registering = !registering);
+    formKey.currentState?.reset();
     passwordController.clear();
     confirmController.clear();
-    formKey.currentState?.reset();
+
+    setState(() => registering = !registering);
   }
 
   @override
@@ -107,29 +102,25 @@ class _AuthScreenState extends State<AuthScreen> {
                         'assets/logo.png',
                         width: 76,
                         height: 76,
-                        errorBuilder: (_, __, ___) {
-                          return const Icon(
-                            Icons.account_balance_wallet_rounded,
-                            size: 76,
-                            color: brandColor,
-                          );
-                        },
+                        errorBuilder: (_, __, ___) => const Icon(
+                          Icons.account_balance_wallet_rounded,
+                          size: 76,
+                          color: brandColor,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 16),
                     Text(
                       'PocketWise',
                       textAlign: TextAlign.center,
-                      style:
-                          Theme.of(context).textTheme.headlineMedium?.copyWith(
-                                fontWeight: FontWeight.bold,
-                              ),
+                      style: Theme.of(context).textTheme.headlineMedium
+                          ?.copyWith(fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 8),
                     Text(
                       registering
                           ? 'Create your personal account'
-                          : 'Keep track of your money',
+                          : 'Welcome back. Log in to manage your money.',
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 28),
@@ -137,8 +128,8 @@ class _AuthScreenState extends State<AuthScreen> {
                       TextFormField(
                         controller: nameController,
                         enabled: !busy,
-                        textCapitalization: TextCapitalization.words,
                         maxLength: 80,
+                        textCapitalization: TextCapitalization.words,
                         decoration: const InputDecoration(
                           labelText: 'Full name',
                           prefixIcon: Icon(Icons.person_outline),
@@ -151,9 +142,9 @@ class _AuthScreenState extends State<AuthScreen> {
                     TextFormField(
                       controller: emailController,
                       enabled: !busy,
+                      maxLength: 254,
                       keyboardType: TextInputType.emailAddress,
                       autocorrect: false,
-                      maxLength: 254,
                       decoration: const InputDecoration(
                         labelText: 'Email',
                         prefixIcon: Icon(Icons.email_outlined),
@@ -188,7 +179,7 @@ class _AuthScreenState extends State<AuthScreen> {
                         ),
                       ),
                     ],
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 22),
                     FilledButton(
                       onPressed: busy ? null : submit,
                       child: busy
@@ -197,46 +188,15 @@ class _AuthScreenState extends State<AuthScreen> {
                               height: 22,
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
-                          : Text(
-                              registering ? 'Create account' : 'Log in',
-                            ),
+                          : Text(registering ? 'Create account' : 'Log in'),
                     ),
+                    const SizedBox(height: 8),
                     TextButton(
                       onPressed: busy ? null : switchMode,
                       child: Text(
                         registering
                             ? 'Already registered? Log in'
                             : 'New here? Create an account',
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    const Divider(),
-                    const SizedBox(height: 12),
-                    OutlinedButton.icon(
-                      onPressed: busy
-                          ? null
-                          : () {
-                              widget.api.enterDemo();
-                              widget.onAuthenticated();
-                            },
-                      icon: const Icon(Icons.explore_outlined),
-                      label: const Text('Try frontend demo'),
-                    ),
-                    const SizedBox(height: 10),
-                    const Text(
-                      'Demo mode does not create an account. Its sample '
-                      'records reset when you leave demo mode or restart '
-                      'the app.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 12),
-                    ),
-                    const SizedBox(height: 14),
-                    Text(
-                      'Server: ${widget.api.serverAddress}',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: Colors.black54,
                       ),
                     ),
                   ],

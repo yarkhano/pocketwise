@@ -78,11 +78,10 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
       }
 
       return true;
-    }).toList()
-      ..sort((first, second) {
-        final dateOrder = second.date.compareTo(first.date);
-        return dateOrder != 0 ? dateOrder : second.id.compareTo(first.id);
-      });
+    }).toList()..sort((first, second) {
+      final dateOrder = second.date.compareTo(first.date);
+      return dateOrder != 0 ? dateOrder : second.id.compareTo(first.id);
+    });
   }
 
   Future<void> addOrEdit([MoneyTransaction? transaction]) async {
@@ -133,11 +132,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
               Text('Type: ${category.isIncome ? "Income" : "Expense"}'),
               Text('Date: ${formatDate(transaction.date)}'),
               const SizedBox(height: 10),
-              Text(
-                transaction.note.isEmpty
-                    ? 'No note'
-                    : transaction.note,
-              ),
+              Text(transaction.note.isEmpty ? 'No note' : transaction.note),
             ],
           ),
           actions: [
@@ -190,10 +185,9 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
         .where((item) => type == 'all' || item.type == type)
         .toList();
 
-    final selectedCategory =
-        categories.any((item) => item.id == categoryId)
-            ? categoryId
-            : null;
+    final selectedCategory = categories.any((item) => item.id == categoryId)
+        ? categoryId
+        : null;
 
     return Stack(
       children: [
@@ -224,14 +218,8 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
               decoration: const InputDecoration(labelText: 'Type'),
               items: const [
                 DropdownMenuItem(value: 'all', child: Text('All types')),
-                DropdownMenuItem(
-                  value: expenseType,
-                  child: Text('Expenses'),
-                ),
-                DropdownMenuItem(
-                  value: incomeType,
-                  child: Text('Income'),
-                ),
+                DropdownMenuItem(value: expenseType, child: Text('Expenses')),
+                DropdownMenuItem(value: incomeType, child: Text('Income')),
               ],
               onChanged: (value) {
                 setState(() {
@@ -275,7 +263,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                 range == null
                     ? 'All dates — choose a range'
                     : '${formatDate(range!.start)} to '
-                        '${formatDate(range!.end)}',
+                          '${formatDate(range!.end)}',
               ),
             ),
             if (range != null)
@@ -389,10 +377,8 @@ class _TransactionFormState extends State<_TransactionForm> {
       if (item.type != type) return false;
 
       // Historical archived category can remain on an existing record.
-      return !item.isArchived ||
-          item.id == widget.transaction?.categoryId;
-    }).toList()
-      ..sort((a, b) => a.name.compareTo(b.name));
+      return !item.isArchived || item.id == widget.transaction?.categoryId;
+    }).toList()..sort((a, b) => a.name.compareTo(b.name));
   }
 
   void useTemplate(QuickTemplate template) {

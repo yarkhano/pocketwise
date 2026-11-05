@@ -9,17 +9,16 @@ String readableError(Object error) {
     return error.message.toString();
   }
 
-  return error
-      .toString()
-      .replaceFirst(RegExp(r'^(Exception|StateError|Bad state):\s*'), '');
+  return error.toString().replaceFirst(
+    RegExp(r'^(Exception|StateError|Bad state):\s*'),
+    '',
+  );
 }
 
 void showMessage(BuildContext context, String message) {
   ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
-    ..showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    ..showSnackBar(SnackBar(content: Text(message)));
 }
 
 String? requiredText(String? value) {
@@ -94,11 +93,7 @@ class PageBody extends StatelessWidget {
   final List<Widget> children;
   final Future<void> Function()? onRefresh;
 
-  const PageBody({
-    super.key,
-    required this.children,
-    this.onRefresh,
-  });
+  const PageBody({super.key, required this.children, this.onRefresh});
 
   @override
   Widget build(BuildContext context) {
@@ -117,34 +112,33 @@ class PageBody extends StatelessWidget {
 
     if (onRefresh == null) return centered;
 
-    return RefreshIndicator(
-      onRefresh: onRefresh!,
-      child: centered,
-    );
+    return RefreshIndicator(onRefresh: onRefresh!, child: centered);
   }
 }
 
 class Panel extends StatelessWidget {
-  final Widget child;
-  final EdgeInsetsGeometry padding;
-
   const Panel({
     super.key,
     required this.child,
     this.padding = const EdgeInsets.all(16),
   });
 
+  final Widget child;
+  final EdgeInsetsGeometry padding;
+
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: padding,
-      decoration: BoxDecoration(
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Material(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE5E9F1)),
+        clipBehavior: Clip.antiAlias,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+          side: const BorderSide(color: Color(0xFFE5E9F1)),
+        ),
+        child: Padding(padding: padding, child: child),
       ),
-      child: child,
     );
   }
 }
@@ -153,11 +147,7 @@ class SectionTitle extends StatelessWidget {
   final String title;
   final Widget? trailing;
 
-  const SectionTitle(
-    this.title, {
-    super.key,
-    this.trailing,
-  });
+  const SectionTitle(this.title, {super.key, this.trailing});
 
   @override
   Widget build(BuildContext context) {
@@ -168,9 +158,9 @@ class SectionTitle extends StatelessWidget {
           Expanded(
             child: Text(
               title,
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
             ),
           ),
           if (trailing != null) trailing!,
@@ -195,10 +185,7 @@ class EmptyMessage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Panel(
-      padding: const EdgeInsets.symmetric(
-        horizontal: 20,
-        vertical: 32,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 32),
       child: Column(
         children: [
           Icon(icon, size: 44, color: brandColor),
@@ -209,10 +196,7 @@ class EmptyMessage extends StatelessWidget {
             style: Theme.of(context).textTheme.titleMedium,
           ),
           const SizedBox(height: 6),
-          Text(
-            message,
-            textAlign: TextAlign.center,
-          ),
+          Text(message, textAlign: TextAlign.center),
         ],
       ),
     );
@@ -223,11 +207,7 @@ class ErrorMessage extends StatelessWidget {
   final String message;
   final VoidCallback onRetry;
 
-  const ErrorMessage({
-    super.key,
-    required this.message,
-    required this.onRetry,
-  });
+  const ErrorMessage({super.key, required this.message, required this.onRetry});
 
   @override
   Widget build(BuildContext context) {
@@ -237,18 +217,11 @@ class ErrorMessage extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(
-              Icons.cloud_off_rounded,
-              size: 48,
-              color: expenseColor,
-            ),
+            const Icon(Icons.cloud_off_rounded, size: 48, color: expenseColor),
             const SizedBox(height: 16),
             Text(message, textAlign: TextAlign.center),
             const SizedBox(height: 16),
-            FilledButton(
-              onPressed: onRetry,
-              child: const Text('Try again'),
-            ),
+            FilledButton(onPressed: onRetry, child: const Text('Try again')),
           ],
         ),
       ),
@@ -411,9 +384,7 @@ class MonthSelector extends StatelessWidget {
         children: [
           IconButton(
             tooltip: 'Previous month',
-            onPressed: () => onChanged(
-              DateTime(month.year, month.month - 1),
-            ),
+            onPressed: () => onChanged(DateTime(month.year, month.month - 1)),
             icon: const Icon(Icons.chevron_left),
           ),
           Expanded(
@@ -425,9 +396,7 @@ class MonthSelector extends StatelessWidget {
           ),
           IconButton(
             tooltip: 'Next month',
-            onPressed: () => onChanged(
-              DateTime(month.year, month.month + 1),
-            ),
+            onPressed: () => onChanged(DateTime(month.year, month.month + 1)),
             icon: const Icon(Icons.chevron_right),
           ),
         ],
@@ -472,12 +441,7 @@ class CategoryField extends StatelessWidget {
                 color: Color(item.colorValue),
               ),
               const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  item.name,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
+              Expanded(child: Text(item.name, overflow: TextOverflow.ellipsis)),
             ],
           ),
         );
@@ -599,9 +563,7 @@ class TransactionRow extends StatelessWidget {
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),
-      subtitle: Text(
-        '${category.name} • ${formatDate(transaction.date)}',
-      ),
+      subtitle: Text('${category.name} • ${formatDate(transaction.date)}'),
       trailing: Text(
         '$sign${formatMoney(transaction.amountPaisa)}',
         style: TextStyle(
@@ -628,14 +590,13 @@ class BudgetProgress extends StatelessWidget {
   Widget build(BuildContext context) {
     final ratio = limitPaisa > 0 ? spentPaisa / limitPaisa : 0.0;
     final exceeded = spentPaisa >= limitPaisa;
-    final approaching =
-        !exceeded && spentPaisa * 100 >= limitPaisa * 80;
+    final approaching = !exceeded && spentPaisa * 100 >= limitPaisa * 80;
 
     final color = exceeded
         ? expenseColor
         : approaching
-            ? warningColor
-            : incomeColor;
+        ? warningColor
+        : incomeColor;
 
     final remaining = limitPaisa - spentPaisa;
 
@@ -650,18 +611,13 @@ class BudgetProgress extends StatelessWidget {
           borderRadius: BorderRadius.circular(8),
         ),
         const SizedBox(height: 8),
-        Text(
-          '${formatMoney(spentPaisa)} of ${formatMoney(limitPaisa)}',
-        ),
+        Text('${formatMoney(spentPaisa)} of ${formatMoney(limitPaisa)}'),
         const SizedBox(height: 4),
         Text(
           remaining < 0
               ? '${formatMoney(-remaining)} over budget'
               : '${formatMoney(remaining)} remaining',
-          style: TextStyle(
-            color: color,
-            fontWeight: FontWeight.w600,
-          ),
+          style: TextStyle(color: color, fontWeight: FontWeight.w600),
         ),
         if (exceeded || approaching) ...[
           const SizedBox(height: 6),

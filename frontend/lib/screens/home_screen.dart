@@ -12,14 +12,10 @@ import 'settings_screen.dart';
 import 'transactions_screen.dart';
 
 class HomeScreen extends StatefulWidget {
+  const HomeScreen({super.key, required this.api, required this.onSignedOut});
+
   final Api api;
   final VoidCallback onSignedOut;
-
-  const HomeScreen({
-    super.key,
-    required this.api,
-    required this.onSignedOut,
-  });
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -45,8 +41,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> refresh() {
-    final existing = activeRefresh;
+    if (!mounted || signingOut) return Future<void>.value();
 
+    final existing = activeRefresh;
     if (existing != null) return existing;
 
     final future = load();
@@ -60,12 +57,10 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> load() async {
-    if (mounted) {
-      setState(() {
-        loading = true;
-        error = null;
-      });
-    }
+    setState(() {
+      loading = true;
+      error = null;
+    });
 
     try {
       final loaded = await widget.api.loadData();
@@ -82,7 +77,6 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() {
         data = loaded;
         notificationWarning = warning;
-        error = null;
       });
     } catch (failure) {
       if (mounted && !signingOut) {
@@ -99,18 +93,24 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => signingOut = true);
 
     try {
-      // Wait for any refresh to finish before clearing notifications.
       await activeRefresh;
 
-      await Notifications.cancelAll();
+      String? notificationError;
+
+      try {
+        await Notifications.cancelAll();
+      } catch (_) {
+        notificationError =
+            'Signed out, but device reminders could not be cancelled.';
+      }
 
       final warning = await widget.api.logout();
 
       if (!mounted) return;
 
-      if (warning != null) showMessage(context, warning);
+      final message = warning ?? notificationError;
+      if (message != null) showMessage(context, message);
 
-      // Remove any settings/forms above this home screen.
       Navigator.of(context).popUntil((route) => route.isFirst);
       widget.onSignedOut();
     } catch (failure) {
@@ -123,11 +123,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> openSettings() async {
     final current = data;
+    if (current == null || signingOut) return;
 
-    if (current == null) return;
-
-    await Navigator.push(
-      context,
+    await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => SettingsScreen(
           api: widget.api,
@@ -148,7 +146,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final current = data;
 
-    final titles = [
+    const titles = [
       'PocketWise',
       'Transactions',
       'Monthly budgets',
@@ -178,17 +176,13 @@ class _HomeScreenState extends State<HomeScreen> {
               data: current,
             );
 
-            if (saved) await refresh();
+            if (saved && mounted) await refresh();
           },
           onViewTransactions: () {
             setState(() => selectedIndex = 1);
           },
         ),
-        TransactionsScreen(
-          api: widget.api,
-          data: current,
-          onChanged: refresh,
-        ),
+        TransactionsScreen(api: widget.api, data: current, onChanged: refresh),
         BudgetsScreen(
           api: widget.api,
           data: current,
@@ -222,8 +216,8 @@ class _HomeScreenState extends State<HomeScreen> {
             onPressed: signingOut
                 ? null
                 : current == null
-                    ? signOut
-                    : openSettings,
+                ? signOut
+                : openSettings,
             icon: Icon(
               current == null ? Icons.logout : Icons.settings_outlined,
             ),
@@ -233,20 +227,6 @@ class _HomeScreenState extends State<HomeScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            if (widget.api.isDemo)
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 8,
-                ),
-                color: const Color(0xFFFFF3CD),
-                child: const Text(
-                  'DEMO MODE • Sample data is not saved to a server.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 12),
-                ),
-              ),
             if (loading && current != null)
               const LinearProgressIndicator(minHeight: 2),
             if (error != null && current != null)
@@ -266,10 +246,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
                 child: Text(
                   notificationWarning!,
-                  style: const TextStyle(
-                    color: Colors.orange,
-                    fontSize: 12,
-                  ),
+                  style: const TextStyle(color: Colors.orange, fontSize: 12),
                 ),
               ),
             Expanded(child: content),

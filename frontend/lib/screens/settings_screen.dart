@@ -4,6 +4,7 @@ import '../api.dart';
 import '../models.dart';
 import '../notifications.dart';
 import '../widgets.dart';
+
 import 'categories_screen.dart';
 import 'reminders_screen.dart';
 import 'templates_screen.dart';
@@ -68,9 +69,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> openPage(Widget page) async {
     if (busy) return;
 
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => page),
-    );
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute<void>(builder: (_) => page));
 
     if (mounted) await refresh();
   }
@@ -78,10 +79,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> editProfile() async {
     final saved = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
-        builder: (_) => _ProfileForm(
-          api: widget.api,
-          user: data.user,
-        ),
+        builder: (_) => _ProfileForm(api: widget.api, user: data.user),
       ),
     );
 
@@ -123,7 +121,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
       showMessage(
         context,
-        enabled ? 'Reminder preference enabled.' : 'Reminder preference disabled.',
+        enabled
+            ? 'Reminder notifications enabled.'
+            : 'Reminder notifications disabled.',
       );
     } catch (exception) {
       if (mounted) showMessage(context, readableError(exception));
@@ -134,9 +134,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> changePassword() async {
     final changed = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => _PasswordForm(api: widget.api),
-      ),
+      MaterialPageRoute(builder: (_) => _PasswordForm(api: widget.api)),
     );
 
     if (changed == true && mounted) {
@@ -149,9 +147,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final confirmed = await confirmAction(
       context,
       title: 'Sign out?',
-      message: widget.api.isDemo
-          ? 'Your temporary demo data will be cleared.'
-          : 'Local reminder notifications will be cancelled on this device.',
+      message:
+          'Your saved records will remain available when you log in again. '
+          'Reminder notifications on this device will be cancelled.',
       actionLabel: 'Sign out',
     );
 
@@ -167,8 +165,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         onRefresh: refresh,
         children: [
           if (busy) const LinearProgressIndicator(),
-          if (error != null)
-            ErrorMessage(message: error!, onRetry: refresh),
+          if (error != null) ErrorMessage(message: error!, onRetry: refresh),
           Panel(
             child: Column(
               children: [
@@ -183,10 +180,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 4),
-                Text(
-                  data.user.email,
-                  textAlign: TextAlign.center,
-                ),
+                Text(data.user.email, textAlign: TextAlign.center),
                 const SizedBox(height: 12),
                 OutlinedButton.icon(
                   onPressed: busy ? null : editProfile,
@@ -196,13 +190,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ],
             ),
           ),
-          if (widget.api.isDemo)
-            const Panel(
-              child: Text(
-                'Demo mode: changes are temporary and disappear when '
-                'you leave the demo or restart the app.',
-              ),
-            ),
           Panel(
             child: Column(
               children: [
@@ -257,9 +244,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ],
                 if (data.user.remindersEnabled)
                   TextButton(
-                    onPressed: busy
-                        ? null
-                        : () => toggleNotifications(true),
+                    onPressed: busy ? null : () => toggleNotifications(true),
                     child: const Text('Check notification permission'),
                   ),
               ],
@@ -270,13 +255,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
               contentPadding: EdgeInsets.zero,
               leading: const Icon(Icons.lock_outline),
               title: const Text('Change password'),
-              subtitle: Text(
-                widget.api.isDemo
-                    ? 'Available for real accounts after backend setup'
-                    : 'You will need to sign in again afterward',
-              ),
+              subtitle: const Text('You will need to sign in again afterward'),
               trailing: const Icon(Icons.chevron_right),
-              onTap: busy || widget.api.isDemo ? null : changePassword,
+              onTap: busy ? null : changePassword,
             ),
           ),
           const Panel(
@@ -311,10 +292,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 }
 
 class _ProfileForm extends StatefulWidget {
-  const _ProfileForm({
-    required this.api,
-    required this.user,
-  });
+  const _ProfileForm({required this.api, required this.user});
 
   final Api api;
   final UserProfile user;
@@ -325,6 +303,7 @@ class _ProfileForm extends StatefulWidget {
 
 class _ProfileFormState extends State<_ProfileForm> {
   final formKey = GlobalKey<FormState>();
+
   late final TextEditingController name;
   bool busy = false;
 
@@ -342,6 +321,7 @@ class _ProfileFormState extends State<_ProfileForm> {
 
   Future<void> save() async {
     if (!formKey.currentState!.validate()) return;
+
     setState(() => busy = true);
 
     try {
@@ -428,17 +408,13 @@ class _PasswordFormState extends State<_PasswordForm> {
 
   Future<void> save() async {
     if (!formKey.currentState!.validate()) return;
+
     setState(() => busy = true);
 
     try {
-      // Cancel before changing credentials so logout cannot leave
-      // old account reminders scheduled on this device.
       await Notifications.cancelAll();
 
-      await widget.api.changePassword(
-        current.text,
-        password.text,
-      );
+      await widget.api.changePassword(current.text, password.text);
 
       if (mounted) Navigator.of(context).pop(true);
     } catch (exception) {
@@ -446,7 +422,7 @@ class _PasswordFormState extends State<_PasswordForm> {
         showMessage(
           context,
           '${readableError(exception)} '
-          'Refresh the app afterward to renew reminder notifications.',
+          'Refresh afterward to renew reminder notifications.',
         );
       }
     } finally {
@@ -477,6 +453,7 @@ class _PasswordFormState extends State<_PasswordForm> {
                   label: 'New password',
                   validator: (value) {
                     final error = validatePassword(value);
+
                     if (error != null) return error;
 
                     if (value == current.text) {
@@ -494,13 +471,14 @@ class _PasswordFormState extends State<_PasswordForm> {
                     if (value != password.text) {
                       return 'Passwords do not match.';
                     }
-                    return null;
+
+                    return requiredText(value);
                   },
                 ),
                 const SizedBox(height: 16),
                 const Text(
-                  'Changing your password ends your existing sessions. '
-                  'Sign in again using your new password.',
+                  'After changing your password, log in again '
+                  'using your new password.',
                 ),
                 const SizedBox(height: 20),
                 FilledButton(

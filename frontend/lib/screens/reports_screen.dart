@@ -55,19 +55,12 @@ class ReportsScreen extends StatelessWidget {
     return PageBody(
       onRefresh: onRefresh,
       children: [
-        MonthSelector(
-          month: month,
-          onChanged: onMonthChanged,
-        ),
+        MonthSelector(month: month, onChanged: onMonthChanged),
         const SizedBox(height: 16),
         Panel(
           child: Column(
             children: [
-              _TotalRow(
-                title: 'Income',
-                amount: income,
-                color: incomeColor,
-              ),
+              _TotalRow(title: 'Income', amount: income, color: incomeColor),
               _TotalRow(
                 title: 'Expenses',
                 amount: expenses,
@@ -80,9 +73,7 @@ class ReportsScreen extends StatelessWidget {
                 color: income >= expenses ? incomeColor : expenseColor,
               ),
               const SizedBox(height: 8),
-              const Text(
-                'Net means recorded income minus recorded expenses.',
-              ),
+              const Text('Net means recorded income minus recorded expenses.'),
             ],
           ),
         ),
@@ -154,9 +145,7 @@ class ReportsScreen extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(data.category(entry.key).name),
-                        ),
+                        Expanded(child: Text(data.category(entry.key).name)),
                         const SizedBox(width: 8),
                         Flexible(
                           child: Text(
@@ -233,10 +222,7 @@ class _TotalRow extends StatelessWidget {
             child: Text(
               formatMoney(amount),
               textAlign: TextAlign.right,
-              style: TextStyle(
-                color: color,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(color: color, fontWeight: FontWeight.bold),
             ),
           ),
         ],
@@ -266,10 +252,7 @@ class _ReportBar extends StatelessWidget {
           children: [
             Expanded(child: Text(label)),
             Flexible(
-              child: Text(
-                formatMoney(amount),
-                textAlign: TextAlign.right,
-              ),
+              child: Text(formatMoney(amount), textAlign: TextAlign.right),
             ),
           ],
         ),
@@ -287,10 +270,7 @@ class _ReportBar extends StatelessWidget {
 }
 
 class _DonutPainter extends CustomPainter {
-  const _DonutPainter({
-    required this.amounts,
-    required this.colors,
-  });
+  const _DonutPainter({required this.amounts, required this.colors});
 
   final List<int> amounts;
   final List<Color> colors;

@@ -6,10 +6,7 @@ import '../widgets.dart';
 import 'transactions_screen.dart';
 
 class TemplatesScreen extends StatefulWidget {
-  const TemplatesScreen({
-    super.key,
-    required this.api,
-  });
+  const TemplatesScreen({super.key, required this.api});
 
   final Api api;
 
@@ -51,11 +48,8 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
 
     final saved = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
-        builder: (_) => _TemplateForm(
-          api: widget.api,
-          data: current,
-          template: template,
-        ),
+        builder: (_) =>
+            _TemplateForm(api: widget.api, data: current, template: template),
       ),
     );
 
@@ -114,17 +108,16 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
       appBar: AppBar(title: const Text('Quick-entry templates')),
       body: current == null
           ? loading
-              ? const Center(child: CircularProgressIndicator())
-              : ErrorMessage(
-                  message: error ?? 'Could not load templates.',
-                  onRetry: load,
-                )
+                ? const Center(child: CircularProgressIndicator())
+                : ErrorMessage(
+                    message: error ?? 'Could not load templates.',
+                    onRetry: load,
+                  )
           : PageBody(
               onRefresh: load,
               children: [
                 if (loading || deleting) const LinearProgressIndicator(),
-                if (error != null)
-                  ErrorMessage(message: error!, onRetry: load),
+                if (error != null) ErrorMessage(message: error!, onRetry: load),
                 const Panel(
                   child: Text(
                     'Save entries you use often. Select Use template, '
@@ -134,7 +127,8 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
                 if (templates.isEmpty)
                   const EmptyMessage(
                     title: 'No templates yet',
-                    message: 'Create a template for a frequent income or expense.',
+                    message:
+                        'Create a template for a frequent income or expense.',
                     icon: Icons.bookmark_border,
                   ),
                 for (final template in templates)
@@ -202,9 +196,7 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
               ],
             ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: current == null || loading || deleting
-            ? null
-            : () => edit(),
+        onPressed: current == null || loading || deleting ? null : () => edit(),
         icon: const Icon(Icons.add),
         label: const Text('Add template'),
       ),
@@ -213,11 +205,7 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
 }
 
 class _TemplateForm extends StatefulWidget {
-  const _TemplateForm({
-    required this.api,
-    required this.data,
-    this.template,
-  });
+  const _TemplateForm({required this.api, required this.data, this.template});
 
   final Api api;
   final AppData data;

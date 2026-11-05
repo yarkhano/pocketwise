@@ -7,9 +7,8 @@ import 'package:pocketwise/models.dart';
 import 'package:pocketwise/notifications.dart';
 
 void main() {
-  setUpAll(() {
-    tz_data.initializeTimeZones();
-  });
+  TestWidgetsFlutterBinding.ensureInitialized();
+  tz_data.initializeTimeZones();
 
   group('Money values', () {
     test('preserves decimal amounts exactly', () {
@@ -19,39 +18,63 @@ void main() {
       expect(decimalMoney(5), '0.05');
     });
 
-    test('rejects invalid transaction amounts', () {
+    test('rejects invalid amounts', () {
       expect(() => positiveMoney('0'), throwsFormatException);
       expect(() => positiveMoney('-10'), throwsFormatException);
       expect(() => positiveMoney('12.345'), throwsFormatException);
       expect(() => positiveMoney('abc'), throwsFormatException);
-    });
-
-    test('rejects values above the supported maximum', () {
-      expect(
-        () => parseMoney('1000000000000.00'),
-        throwsFormatException,
-      );
+      expect(() => parseMoney('1000000000000.00'), throwsFormatException);
     });
   });
 
-  group('Demo data', () {
+  group('Local accounts', () {
+    late String initialStore;
+    String? savedStore;
     late Api api;
 
-    setUp(() {
-      api = Api();
-      api.enterDemo();
+    Api createApi() {
+      return Api(
+        readStore: () async => savedStore,
+        writeStore: (value) async {
+          savedStore = value;
+        },
+      );
+    }
+
+    setUpAll(() async {
+      savedStore = null;
+
+      final first = createApi();
+      await first.restoreSession();
+      initialStore = savedStore!;
+      first.dispose();
+    });
+
+    setUp(() async {
+      savedStore = initialStore;
+      api = createApi();
+
+      await api.login('yar@pocketwise.example', 'PocketWise@123');
     });
 
     tearDown(() {
       api.dispose();
     });
 
-    test('category totals follow transaction changes', () async {
-      final before = await api.loadData();
-      final month = monthOnly(DateTime.now());
+    test('rejects an incorrect password', () async {
+      await api.logout();
 
+      await expectLater(
+        api.login('yar@pocketwise.example', 'WrongPassword123'),
+        throwsA(isA<ApiException>()),
+      );
+
+      expect(await api.restoreSession(), isFalse);
+    });
+
+    test('records and session survive a new Api instance', () async {
+      final before = await api.loadData();
       final category = before.activeCategories(expenseType).first;
-      final originalTotal = before.categoryTotal(category.id, month);
 
       await api.saveTransaction(
         MoneyTransaction(
@@ -59,16 +82,106 @@ void main() {
           categoryId: category.id,
           amountPaisa: 12345,
           date: DateTime.now(),
-          note: 'Test expense',
+          note: 'Persistence check',
+        ),
+      );
+
+      final reopened = createApi();
+
+      expect(await reopened.restoreSession(), isTrue);
+
+      final restored = await reopened.loadData();
+
+      expect(
+        restored.transactions.any(
+          (item) =>
+              item.note == 'Persistence check' && item.amountPaisa == 12345,
+        ),
+        isTrue,
+      );
+
+      reopened.dispose();
+    });
+
+    test('different accounts have separate records', () async {
+      final first = await api.loadData();
+      expect(first.transactions, isNotEmpty);
+
+      await api.logout();
+      await api.login('durdana@pocketwise.example', 'PocketWise@123');
+
+      final second = await api.loadData();
+
+      expect(second.user.email, 'durdana@pocketwise.example');
+      expect(second.transactions, isEmpty);
+      expect(second.budgets, isEmpty);
+
+      await expectLater(
+        api.deleteTransaction(first.transactions.first.id),
+        throwsA(isA<ApiException>()),
+      );
+    });
+
+    test('registration creates an account with empty records', () async {
+      await api.logout();
+
+      await api.register(
+        'New Student',
+        'student@pocketwise.example',
+        'Student@123',
+      );
+
+      await api.login('student@pocketwise.example', 'Student@123');
+
+      final data = await api.loadData();
+
+      expect(data.user.fullName, 'New Student');
+      expect(data.categories, isNotEmpty);
+      expect(data.transactions, isEmpty);
+      expect(data.templates, isEmpty);
+    });
+
+    test('duplicate email registration is rejected', () async {
+      await expectLater(
+        api.register('Another User', ' YAR@POCKETWISE.EXAMPLE ', 'Another@123'),
+        throwsA(isA<ApiException>()),
+      );
+    });
+
+    test('password change ends the session and updates credentials', () async {
+      await api.changePassword('PocketWise@123', 'ChangedPassword@456');
+
+      expect(await api.restoreSession(), isFalse);
+
+      await expectLater(
+        api.login('yar@pocketwise.example', 'PocketWise@123'),
+        throwsA(isA<ApiException>()),
+      );
+
+      await api.login('yar@pocketwise.example', 'ChangedPassword@456');
+
+      expect(await api.restoreSession(), isTrue);
+    });
+
+    test('category totals follow saved transactions', () async {
+      final before = await api.loadData();
+      final month = monthOnly(DateTime.now());
+      final category = before.activeCategories(expenseType).first;
+
+      final original = before.categoryTotal(category.id, month);
+
+      await api.saveTransaction(
+        MoneyTransaction(
+          id: 0,
+          categoryId: category.id,
+          amountPaisa: 12345,
+          date: DateTime.now(),
         ),
       );
 
       final after = await api.loadData();
 
-      expect(
-        after.categoryTotal(category.id, month),
-        originalTotal + 12345,
-      );
+      expect(after.categoryTotal(category.id, month), original + 12345);
     });
 
     test('saving a template does not create a transaction', () async {
@@ -81,7 +194,6 @@ void main() {
           categoryId: category.id,
           name: 'Test template',
           amountPaisa: 50000,
-          note: 'For later use',
         ),
       );
 
@@ -104,25 +216,18 @@ void main() {
             limitPaisa: 99900,
           ),
         ),
-        throwsA(isA<Exception>()),
+        throwsA(isA<ApiException>()),
       );
     });
   });
-
   group('Reminder dates', () {
     final location = tz.getLocation('Asia/Karachi');
 
-    test('monthly reminders handle short months', () {
+    test('monthly reminders handle shorter months', () {
       final reminder = BillReminder(
         id: 1,
         title: 'Monthly bill',
-        scheduledAt: tz.TZDateTime(
-          location,
-          2028,
-          1,
-          31,
-          9,
-        ).toUtc(),
+        scheduledAt: tz.TZDateTime(location, 2028, 1, 31, 9).toUtc(),
         timezone: 'Asia/Karachi',
         repeatType: 'monthly',
       );
@@ -138,7 +243,7 @@ void main() {
       expect(dates.every((date) => date.hour == 9), isTrue);
     });
 
-    test('expired one-time reminders are not rescheduled', () {
+    test('expired one-time reminders are not scheduled', () {
       final reminder = BillReminder(
         id: 2,
         title: 'Old bill',
@@ -146,12 +251,10 @@ void main() {
         timezone: 'Asia/Karachi',
       );
 
-      final dates = Notifications.occurrences(
-        reminder,
-        now: DateTime.utc(2026, 1, 1),
+      expect(
+        Notifications.occurrences(reminder, now: DateTime.utc(2026, 1, 1)),
+        isEmpty,
       );
-
-      expect(dates, isEmpty);
     });
 
     test('disabled reminders have no occurrences', () {
@@ -165,10 +268,7 @@ void main() {
       );
 
       expect(
-        Notifications.occurrences(
-          reminder,
-          now: DateTime.utc(2026, 1, 1),
-        ),
+        Notifications.occurrences(reminder, now: DateTime.utc(2026, 1, 1)),
         isEmpty,
       );
     });

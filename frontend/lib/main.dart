@@ -106,21 +106,12 @@ class _PocketWiseAppState extends State<PocketWiseApp> {
               ),
             )
           : startupError != null
-              ? Scaffold(
-                  body: ErrorMessage(
-                    message: startupError!,
-                    onRetry: initialize,
-                  ),
-                )
-              : signedIn
-                  ? HomeScreen(
-                      api: api,
-                      onSignedOut: leaveApp,
-                    )
-                  : AuthScreen(
-                      api: api,
-                      onAuthenticated: enterApp,
-                    ),
+          ? Scaffold(
+              body: ErrorMessage(message: startupError!, onRetry: initialize),
+            )
+          : signedIn
+          ? HomeScreen(api: api, onSignedOut: leaveApp)
+          : AuthScreen(api: api, onAuthenticated: enterApp),
     );
   }
 }

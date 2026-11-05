@@ -8,10 +8,7 @@ import '../widgets.dart';
 class CategoriesScreen extends StatefulWidget {
   final Api api;
 
-  const CategoriesScreen({
-    super.key,
-    required this.api,
-  });
+  const CategoriesScreen({super.key, required this.api});
 
   @override
   State<CategoriesScreen> createState() => _CategoriesScreenState();
@@ -56,11 +53,8 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
     final saved = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
-        builder: (_) => _CategoryForm(
-          api: widget.api,
-          data: current,
-          category: category,
-        ),
+        builder: (_) =>
+            _CategoryForm(api: widget.api, data: current, category: category),
       ),
     );
 
@@ -76,7 +70,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
       message: category.isArchived
           ? 'This category will become available for new transactions.'
           : 'Existing records will remain. This category will no longer '
-              'be selectable for new transactions.',
+                'be selectable for new transactions.',
       actionLabel: category.isArchived ? 'Restore' : 'Archive',
     );
 
@@ -101,7 +95,8 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
   Widget build(BuildContext context) {
     final current = data;
 
-    final categories = current?.categories
+    final categories =
+        current?.categories
             .where((item) => showArchived || !item.isArchived)
             .toList() ??
         [];
@@ -119,74 +114,74 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
       body: loading && current == null
           ? const Center(child: CircularProgressIndicator())
           : error != null
-              ? ErrorMessage(message: error!, onRetry: load)
-              : PageBody(
-                  onRefresh: load,
-                  children: [
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('Show archived categories'),
-                      value: showArchived,
-                      onChanged: (value) {
-                        setState(() => showArchived = value);
-                      },
+          ? ErrorMessage(message: error!, onRetry: load)
+          : PageBody(
+              onRefresh: load,
+              children: [
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Show archived categories'),
+                  value: showArchived,
+                  onChanged: (value) {
+                    setState(() => showArchived = value);
+                  },
+                ),
+                if (loading || busy) const LinearProgressIndicator(),
+                if (categories.isEmpty)
+                  const EmptyMessage(
+                    title: 'No categories',
+                    message: 'Add a category using the button below.',
+                    icon: Icons.category_outlined,
+                  ),
+                for (final category in categories)
+                  Panel(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 4,
                     ),
-                    if (loading || busy)
-                      const LinearProgressIndicator(),
-                    if (categories.isEmpty)
-                      const EmptyMessage(
-                        title: 'No categories',
-                        message: 'Add a category using the button below.',
-                        icon: Icons.category_outlined,
-                      ),
-                    for (final category in categories)
-                      Panel(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 4,
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: CircleAvatar(
+                        backgroundColor: Color(
+                          category.colorValue,
+                        ).withValues(alpha: 0.12),
+                        child: Icon(
+                          categoryIcon(category.iconKey),
+                          color: Color(category.colorValue),
                         ),
-                        child: ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: CircleAvatar(
-                            backgroundColor: Color(category.colorValue)
-                                .withValues(alpha: 0.12),
-                            child: Icon(
-                              categoryIcon(category.iconKey),
-                              color: Color(category.colorValue),
+                      ),
+                      title: Text(category.name),
+                      subtitle: Text(
+                        '${category.isIncome ? "Income" : "Expense"}'
+                        '${category.isArchived ? " • Archived" : ""}',
+                      ),
+                      onTap: busy ? null : () => edit(category),
+                      trailing: PopupMenuButton<String>(
+                        enabled: !busy,
+                        onSelected: (action) {
+                          if (action == 'edit') {
+                            edit(category);
+                          } else {
+                            toggleArchive(category);
+                          }
+                        },
+                        itemBuilder: (_) => [
+                          const PopupMenuItem(
+                            value: 'edit',
+                            child: Text('Edit'),
+                          ),
+                          PopupMenuItem(
+                            value: 'archive',
+                            child: Text(
+                              category.isArchived ? 'Restore' : 'Archive',
                             ),
                           ),
-                          title: Text(category.name),
-                          subtitle: Text(
-                            '${category.isIncome ? "Income" : "Expense"}'
-                            '${category.isArchived ? " • Archived" : ""}',
-                          ),
-                          onTap: busy ? null : () => edit(category),
-                          trailing: PopupMenuButton<String>(
-                            enabled: !busy,
-                            onSelected: (action) {
-                              if (action == 'edit') {
-                                edit(category);
-                              } else {
-                                toggleArchive(category);
-                              }
-                            },
-                            itemBuilder: (_) => [
-                              const PopupMenuItem(
-                                value: 'edit',
-                                child: Text('Edit'),
-                              ),
-                              PopupMenuItem(
-                                value: 'archive',
-                                child: Text(
-                                  category.isArchived ? 'Restore' : 'Archive',
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
+                        ],
                       ),
-                  ],
-                ),
+                    ),
+                  ),
+              ],
+            ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: current == null || busy ? null : () => edit(),
         icon: const Icon(Icons.add),
@@ -201,11 +196,7 @@ class _CategoryForm extends StatefulWidget {
   final AppData data;
   final ExpenseCategory? category;
 
-  const _CategoryForm({
-    required this.api,
-    required this.data,
-    this.category,
-  });
+  const _CategoryForm({required this.api, required this.data, this.category});
 
   @override
   State<_CategoryForm> createState() => _CategoryFormState();
@@ -226,9 +217,7 @@ class _CategoryFormState extends State<_CategoryForm> {
   void initState() {
     super.initState();
 
-    nameController = TextEditingController(
-      text: widget.category?.name ?? '',
-    );
+    nameController = TextEditingController(text: widget.category?.name ?? '');
 
     type = widget.category?.type ?? expenseType;
     iconKey = widget.category?.iconKey ?? 'other';
@@ -296,9 +285,7 @@ class _CategoryFormState extends State<_CategoryForm> {
                   controller: nameController,
                   textCapitalization: TextCapitalization.words,
                   maxLength: 40,
-                  decoration: const InputDecoration(
-                    labelText: 'Category name',
-                  ),
+                  decoration: const InputDecoration(labelText: 'Category name'),
                   validator: requiredText,
                 ),
                 const SizedBox(height: 16),
@@ -338,7 +325,8 @@ class _CategoryFormState extends State<_CategoryForm> {
                     return Semantics(
                       button: true,
                       selected: colorValue == value,
-                      label: 'Category color ${categoryColors.indexOf(value) + 1}',
+                      label:
+                          'Category color ${categoryColors.indexOf(value) + 1}',
                       child: InkWell(
                         onTap: () => setState(() => colorValue = value),
                         borderRadius: BorderRadius.circular(24),
