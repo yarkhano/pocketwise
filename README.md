@@ -4,20 +4,18 @@ Personal Expense and Budget Tracker.
 
 ## Status
 
-Repository scaffold only.
 
-The frontend currently runs Flutter's generated demonstration app.
-PocketWise screens, backend features, migrations, deployment,
-and backup scripts still need implementation.
+
+The frontend currently runs as it has Dart Code ,while backend and database are not implemented yet so the functionality would not be working properly.
 
 ## Team
 
-- Muhammad Yar Khan — xxxxxxxxx
-- Durdana Bila — xxxxxxxxx
-- Zain Ul Hadi — xxxxxxxxx
+- Muhammad Yar Khan 
+- Durdana Bilal 
+- Zain Ul Hadi 
 
 Course: Mobile Application Development  
-Instructor: xxxxxxxxx
+
 
 ## Planned stack
 
